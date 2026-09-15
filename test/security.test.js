@@ -222,3 +222,13 @@ test("production read filters do not require production-write permission", async
   const r = await call("list_deployments", { target: "production" });
   assert.equal(r.json.result.isError, false, r.json.result.content[0].text);
 });
+
+test("result size limit includes pretty-print formatting", async () => {
+  process.env.VERCEL_MCP_ENABLE_CLI_APIS = "true";
+  const data = { rows: Array.from({ length: 30000 }, () => ({ a: 1 })) };
+  assert.ok(Buffer.byteLength(JSON.stringify(data)) < 524288);
+  assert.ok(Buffer.byteLength(JSON.stringify(data, null, 2)) > 524288);
+  global.fetch = async () => new Response(JSON.stringify(data));
+  const r = await call("list_toolbar_threads", { teamId: "team_test" });
+  assert.equal(r.json.result.isError, true); assert.match(r.body, /524288/);
+});

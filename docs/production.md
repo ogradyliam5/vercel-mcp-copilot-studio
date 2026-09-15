@@ -38,7 +38,7 @@ An operator flag permits a capability; **it is not proof a human approved an ind
 | Incoming MCP request (raw or parsed) | 2097152 bytes |
 | Inline deployment source | 100 files; 1048576 decoded bytes total |
 | API response read | 4194304 bytes |
-| Serialized tool result before pretty-printing | 524288 bytes |
+| Serialized tool result text (including formatting) | 524288 bytes |
 | Vercel function duration configured in vercel.json | 60 seconds |
 | Vercel API request including response read | 20 seconds per request |
 | Public content DNS lookup | 5 seconds |
