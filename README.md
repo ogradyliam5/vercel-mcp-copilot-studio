@@ -79,6 +79,22 @@ List tools do not automatically fetch every page. Project, deployment and log to
 
 **This is not complete Vercel administration.** It does not implement creating/deleting projects, creating deployments, editing DNS, managing team membership, or billing administration. A Full Account token does not add those missing tools; additional actions require implementation.
 
+### Tool annotations
+
+Every tool returned by `tools/list` declares all **4 MCP hints** as explicit booleans. Hosts can use these descriptions to inform warnings and approval policies; **they are not permission checks or an enforced confirmation step**. See the [MCP annotation specification](https://modelcontextprotocol.io/specification/2025-06-18/schema#toolannotations).
+
+| Tools | `readOnlyHint` | `destructiveHint` | `idempotentHint` | `openWorldHint` |
+|---|---|---|---|---|
+| The **9 read tools** listed above | `true` | `false` | `true` | `true` |
+| `cancel_deployment` | `false` | `true` | `true` | `true` |
+| `promote_deployment` | `false` | `true` | `false` | `true` |
+| `create_env_var` | `false` | `true` | `false` | `true` |
+| `delete_env_var` | `false` | `true` | `true` | `true` |
+
+All tools contact the external Vercel API, including the read-only tools. The **4 write tools** can cancel work, replace production, overwrite a value, or remove data, so they are marked potentially destructive rather than merely additive.
+
+Idempotency describes repeated *effects*, not identical responses: canceling the same deployment again is rejected ([HTTP 400 for an already canceled deployment](https://vercel.com/docs/rest-api/deployments/cancel-a-deployment)), and deleting the same variable ID again cannot delete another variable. Promotion and environment-variable upsert are conservatively **not advertised as idempotent**; this wrapper provides no guarantee of side-effect-free retries for them. Keep explicit approval for writes even when an idempotency hint is true.
+
 ## Set up in Copilot Studio
 
 You need a Vercel account, permission to deploy this repository, and access to add tools and connections to your Copilot Studio agent. Your organization's Power Platform data policies must also allow the connection; see [Microsoft's MCP setup guide](https://learn.microsoft.com/en-us/microsoft-copilot-studio/mcp-add-existing-server-to-agent).
@@ -232,7 +248,7 @@ Run the repository's test command:
 node test/mcp.test.js
 ```
 
-The tests start a local HTTP server around the MCP handler, **mock `api.vercel.com`**, and exercise initialization, notifications, discovery, tool calls and error paths. They do not validate a real token, the deployed function, or a live Copilot Studio connection.
+The tests start a local HTTP server around the MCP handler and **mock `api.vercel.com`**. The same command runs protocol tests and [`test/tool-contracts.js`](test/tool-contracts.js): all **13 tools** have success and upstream-error cases that check HTTP methods, encoded paths, team/query parameters, Bearer authentication, request bodies and returned content. Discovery tests verify all **4 hints** for every tool, with additional checks for secret-value masking, explicit environment targets and default list limits. This is tool-level behavior coverage, not a claim of 100% line or branch coverage. Tests do not validate a real token, the deployed function, or a live Copilot Studio connection.
 
 ## License
 
