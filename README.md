@@ -51,7 +51,25 @@ For the recommended setup, no `VERCEL_TOKEN` environment variable is needed on t
 
 [Vercel's official hosted MCP server](https://vercel.com/docs/agent-resources/vercel-mcp) is at `https://mcp.vercel.com` and uses OAuth sign-in with approved clients. This project is an alternative for an **API-key-based connection that you host and control**; it calls the REST API directly and does not depend on the official MCP server.
 
-Copilot Studio [supports OAuth, including dynamic discovery](https://learn.microsoft.com/en-us/microsoft-copilot-studio/mcp-add-existing-server-to-agent). Do not assume that OAuth is unsupported, or that protocol support alone guarantees compatibility with every provider. Check Vercel's supported-client guidance if you prefer its hosted service. The API-key instructions below apply to **this repository**, not `mcp.vercel.com`.
+Copilot Studio [supports OAuth, including dynamic discovery](https://learn.microsoft.com/en-us/microsoft-copilot-studio/mcp-add-existing-server-to-agent). The issue is provider approval, not a general lack of OAuth support. As checked on **2026-09-15**, Vercel's documented supported-client list includes **VS Code with Copilot**, but not **Microsoft Copilot Studio**; these are different products.
+
+#### Observed Copilot Studio connection failure
+
+On **2026-09-15**, a maintainer reported this error when connecting Copilot Studio to `https://mcp.vercel.com` using **OAuth 2.0 → Dynamic discovery**:
+
+```text
+Failed to login. GetDynamicClientRegistrationResultAsync failed. Status Code: BadRequest, Response: {"error":"invalid_redirect_uri","error_description":"The provided redirect URIs are not approved for use by this authorization server."}
+```
+
+A **redirect URI (callback address)** is where the authorization service sends the user back after sign-in. This error means the authorization server rejected the callback addresses submitted during client registration, before the connection could be authorized. It confirms that this connection attempt was blocked; it does not prove that every Copilot Studio configuration will always be unsupported.
+
+- Keep a working API-key bridge connection while asking Vercel for a supported Copilot Studio OAuth configuration or approval of its callback URI.
+- Regenerating a Vercel REST token, changing `x-api-key`, or editing this bridge cannot fix the official service's callback approval policy. Switching to Manual OAuth alone is not a fix either: it still needs an appropriate OAuth client and an approved callback.
+- Share the error and the failing setup step with support; provide any requested callback details through an approved private channel. Never share access tokens, cookies, or full sign-in URLs containing authorization codes.
+
+Both options are remote once hosted: this bridge runs at **your** URL; the official service is hosted and maintained by **Vercel**. If the official connection becomes supported and its tools meet your needs, it can remove the need to host and maintain this bridge. Check [Vercel's current supported-client guidance](https://vercel.com/docs/agent-resources/vercel-mcp) rather than treating this dated observation as a permanent limitation.
+
+The API-key instructions below apply to **this repository**, not `mcp.vercel.com`.
 
 ## What it can and cannot do
 
@@ -78,6 +96,22 @@ The server currently exposes **13 tools**:
 List tools do not automatically fetch every page. Project, deployment and log tools accept a `limit`; a response is not necessarily a complete account inventory. See [`lib/tools.js`](lib/tools.js) for the implemented arguments and handlers.
 
 **This is not complete Vercel administration.** It does not implement creating/deleting projects, creating deployments, editing DNS, managing team membership, or billing administration. A Full Account token does not add those missing tools; additional actions require implementation.
+
+### Can the agent create deployments or redeploy?
+
+**Not with the current 13 tools, but Vercel's REST API supports it.** This is an implementation gap in this bridge, not a limitation of MCP or API-key authentication. The existing `promote_deployment` tool requests production promotion of an already-built deployment; it does not build the latest Git commit or create a new deployment.
+
+Vercel's [create-deployment API (`POST /v13/deployments`)](https://vercel.com/docs/rest-api/deployments/create-a-new-deployment) supports these distinct operations:
+
+| Operation | What the API needs | Available in this bridge? |
+|---|---|---|
+| Deploy from Git | A `gitSource` identifying the source revision, with the intended project and account/team context. | **No** — requires a new tool. |
+| Redeploy an existing deployment | Its `deploymentId`; settings are inherited unless overridden, and the result has a new deployment ID, URL, and build. | **No** — requires a new tool. |
+| Deploy uploaded source files | File content, or references to files uploaded through Vercel's file-upload API; `files` cannot be combined with `gitSource`. | **No** — requires a source-upload/deployment implementation. |
+
+A sensible first extension is deploy/redeploy for an **existing Git-connected project**, with preview as the default and separately approved production changes. This is a proposed extension, **not implemented behavior**. It would need explicit project/team/source selection, input validation, write annotations, tests, and deployment-status checking before reporting success. A Vercel token alone does not supply source files or grant access to a private Git repository. Builds run on Vercel and can consume account usage.
+
+Until those tools are implemented, create deployments through your existing Vercel Git integration, dashboard, CLI, or REST API, then use this server to inspect their status and logs. **Deploying this MCP bridge during setup does not give the agent a tool for deploying your other applications.**
 
 ### Tool annotations
 
@@ -180,6 +214,7 @@ Start with the **tool name and raw error**, not an AI-generated guess. Do not pa
 
 | Symptom | What to check |
 |---|---|
+| Official `mcp.vercel.com` login fails with `GetDynamicClientRegistrationResultAsync` / `invalid_redirect_uri` | The authorization server rejected the submitted OAuth callback addresses during registration. See the [observed connection failure](#observed-copilot-studio-connection-failure); this is separate from this bridge's REST-token errors. |
 | `no Vercel access token was provided` | Select the correct connection; confirm **API key → Header → `x-api-key`** and that it contains the raw token. |
 | `Vercel API error: ... (HTTP 401)` or `(HTTP 403)` | Check the saved token's value, expiration, revocation and scope. Check team context and conflicting headers below. Do not assume the header conversion is missing. |
 | `Vercel API error: User not found. (HTTP 404)` | The upstream API returned this error; it does not establish a single cause. Identify the failing tool, verify token scope and try the read-only project test. A token prefix alone does not prove validity. |
