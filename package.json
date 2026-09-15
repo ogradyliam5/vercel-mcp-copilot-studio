@@ -1,6 +1,6 @@
 {
   "name": "vercel-mcp-server",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Zero-dependency MCP (Model Context Protocol) server for the Vercel platform, compatible with Microsoft Copilot Studio (Streamable HTTP + API key auth).",
   "main": "server.js",
   "scripts": {

@@ -8,6 +8,11 @@
  * Run: node test/mcp.test.js
  */
 
+process.env.VERCEL_MCP_ALLOW_WRITES = "true";
+process.env.VERCEL_MCP_ALLOW_PRODUCTION = "true";
+process.env.VERCEL_MCP_ENABLE_CLI_APIS = "true";
+process.env.VERCEL_MCP_ALLOW_EXTERNAL_FETCH = "true";
+delete process.env.VERCEL_MCP_TOOLS;
 const assert = require("assert");
 const http = require("http");
 
@@ -251,8 +256,13 @@ async function main() {
 
   await require("./tool-contracts")({ test, post, authHeaders });
 
-  server.close();
-  console.log(`\nAll ${passed} tests passed.`);
+  await new Promise((resolve) => server.close(resolve));
+  // Keep the existing CI entry point: run every new suite, propagating failure.
+  const extra = require("node:child_process").spawnSync(process.execPath, ["--test", "test/extended.test.js", "test/security.test.js"], {
+    cwd: require("node:path").resolve(__dirname, ".."), stdio: "inherit",
+  });
+  assert.strictEqual(extra.status, 0, "Extended/security test suites failed");
+  console.log(`\nAll ${passed} legacy tests and the extended/security suites passed.`);
 }
 
 main().catch((e) => {
