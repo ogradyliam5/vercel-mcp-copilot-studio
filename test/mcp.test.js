@@ -249,6 +249,8 @@ async function main() {
     assert.strictEqual(r.body.length, 2);
   });
 
+  await require("./tool-contracts")({ test, post, authHeaders });
+
   server.close();
   console.log(`\nAll ${passed} tests passed.`);
 }
