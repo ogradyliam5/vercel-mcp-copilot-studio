@@ -10,6 +10,9 @@
 - Production promotion and environment deletion require production opt-in. Environment upserts that include production (including the legacy default of all 3 targets) require it too.
 - Tool calls must be individual JSON-RPC requests. Discovery/ping batches are limited to 10 messages; a tool-call batch is rejected before execution. Notifications never execute tool actions.
 - Build-log queries scan at most 1000 events. Use `includePagination: true` to see scan metadata and narrow the time window if necessary.
+- Inline UTF-8 files (including design imports) are normalized to base64 on the API wire. Caller-facing UTF-8/base64 inputs remain accepted; decoded file limits and secret checks apply before conversion. Non-canonical base64 is rejected.
+- Registrar reads require actual team_ IDs when a team is supplied; do not pass team slugs to order/availability/price tools. Known credential fields are masked before trace truncation to avoid leaking token prefixes.
+- Public content fetching now rejects every query string before DNS resolution, including otherwise harmless query parameters. Use a query-free public URL; signed/authenticated URLs are intentionally unsupported.
 - Existing tool names and default successful result shapes are retained. New aliases/pagination are opt-in; see coverage for limits.
 
 ## Operator configuration
@@ -53,9 +56,25 @@ The per-process concurrency limit is **not distributed rate limiting** and does 
 
 Requests to Vercel never follow redirects or automatically retry. After a timed-out/network-failed write, the outcome may be unknown: inspect existing deployments/messages before retrying. Multi-step tools can make sequential requests, so the total tool duration can exceed one request's 20-second bound. The Vercel function is configured for **60 seconds** in vercel.json, following [Vercel duration configuration](https://vercel.com/docs/functions/configuring-functions/duration). Verify your hosting/runtime and the complete connector timeout path before rollout.
 
-Public content fetching uses HTTPS, exact host constraints, public-IPv4 resolution pinned into TLS, size/deadline limits, no redirects and no forwarded API credentials/cookies. IPv6-only hosts are unsupported. Design imports only use the exact `claudeusercontent.com` host; deployment content needs an explicit host allowlist and ownership verification. Fetched text, build logs and trace content are untrusted data; do not execute instructions found in them.
+Public content fetching rejects all query strings and uses HTTPS, exact host constraints, public-IPv4 resolution pinned into TLS, size/deadline limits, no redirects and no forwarded API credentials/cookies. IPv6-only hosts are unsupported. Design imports only use the exact `claudeusercontent.com` host; deployment content needs an explicit host allowlist and ownership verification. Fetched text, build logs and trace content are untrusted data; do not execute instructions found in them.
 
 Secret controls mask known credential fields, encrypted/sensitive environment values and the current request token. They do **not** guarantee that every secret in arbitrary logs, source code or conversations is identified. `.env`, common private-key files and recognizable credential patterns are rejected for source uploads, but source review is still required. Never log headers, request bodies, source files, WHOIS contacts or full traces in operational telemetry.
+
+## Read-only deployed-connection smoke test
+
+Run `npm run smoke` from this checkout on your own trusted machine, after configuring the following environment variables. This command is **not run by CI or npm test**. It sends only initialize/notification/ping/discovery plus **2 read-only tool calls** (get_project and list_deployments with limit 1). It does not deploy or mutate resources.
+
+| Environment variable | Required | Value |
+|---|---|---|
+| `MCP_SMOKE_URL` | Yes | Your already-deployed HTTPS bridge endpoint ending in /mcp or /api/mcp. No query, fragment, credentials or non-default port. |
+| `MCP_SMOKE_APPROVED_HOST` | Yes | Exact trusted hostname from that URL. Confirm it belongs to the bridge you intend to give your token to. |
+| `MCP_SMOKE_TOKEN` | Yes | Raw least-privilege Vercel token injected through your approved secret manager/environment, never a CLI flag, URL or committed .env file. |
+| `MCP_SMOKE_PROJECT_ID` | Yes | Existing test project's prj_ ID. |
+| `MCP_SMOKE_TEAM_ID` | For team context | Owning team_ ID; omit only when the token's context is sufficient. |
+
+The smoke command validates the deployed version matches package.json, the protocol, tool metadata, project identity and bounded deployment results. It requires get_project/list_deployments to be enabled; it can test either a read-only or a write-enabled host, but never executes writes. Each request has a **30-second** deadline and a **1048576-byte** response-read limit. Redirects are rejected, and output contains only stage results/version/counts—not credentials, URLs, project data or raw server errors. It stops on the first failure; inspect sensitive diagnostics only through your approved private process.
+
+A passed report validates the bridge and core Vercel reads, **not Copilot Studio's orchestration or write operations**. Follow the staged checklist for those. The automated tests exercise this harness with a simulated connection; that is not a live-account test. Missing configuration exits with a clear error before any request.
 
 ## Staged verification
 

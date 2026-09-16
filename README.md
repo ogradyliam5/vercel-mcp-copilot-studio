@@ -119,7 +119,7 @@ The registry contains **33 implemented tools**. **14 read-only tools** are visib
 
 You can now deploy **inline source files**, deploy a branch/commit of an **existing GitHub-linked project**, and **redeploy an existing deployment**. These use [Vercel's deployment API](https://vercel.com/docs/rest-api/deployments/create-a-new-deployment), not a local shell or the official MCP endpoint. Vercel must have access to the Git repository; a token does not supply local source files.
 
-All 3 deployment tools require an explicit **preview or production target**. Enable writes for a reviewed test project first; production requires a separate operator flag. File deployment supports **100 files / 1048576 decoded bytes**; use Git for larger projects. A production/custom-target original cannot be safely redeployed as preview by this implementation: use deploy_from_git to create a fresh preview instead.
+All 3 deployment tools require an explicit **preview or production target**. Enable writes for a reviewed test project first; production requires a separate operator flag. UTF-8 and base64 inputs are normalized to base64 on the API wire. File deployment supports **100 files / 1048576 decoded bytes**; use Git for larger projects. A production/custom-target original cannot be safely redeployed as preview by this implementation: use deploy_from_git to create a fresh preview instead.
 
 **A requested build is not a successful deployment.** Check the returned ID with get_deployment until READY or ERROR, inspect build logs, and verify the actual page. No automatic retries are made: a timeout can leave the write outcome unknown.
 
@@ -297,7 +297,7 @@ Run the repository's test command:
 npm test
 ```
 
-The test command runs the original 46 protocol/contract tests, then the extended-tool and security suites. All **33 implemented tools** are covered by behavioral fixtures; an inventory check detects untested additions. Tests cover request methods/paths/query/body, all 4 annotations, upstream failures, disabled writes, production gates, malformed input, redaction, size/deadline limits, pagination, DNS pinning, and both HTTP adapters. APIs are mocked: this is not a claim of 100% branch coverage or live authentication/deployment verification. See [production rollout](docs/production.md) for the required real-connection checks.
+The test command runs the original 46 protocol/contract tests, then the extended-tool and security suites. All **33 implemented tools** are covered by behavioral fixtures; an inventory check detects untested additions. Tests cover request methods/paths/query/body, all 4 annotations, upstream failures, disabled writes, production gates, malformed input, redaction, size/deadline limits, pagination, DNS pinning, and both HTTP adapters. APIs are mocked: this is not a claim of 100% branch coverage or live authentication/deployment verification. See [production rollout](docs/production.md) for the required real-connection checks and the credential-safe, read-only `npm run smoke` command. Public content URLs must be query-free; known credential fields in traces are masked before truncation.
 
 ## License
 

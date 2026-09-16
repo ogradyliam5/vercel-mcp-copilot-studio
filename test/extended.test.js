@@ -23,7 +23,7 @@ const GET = (path, response, query = scope) => step("GET", path, query, response
 const POST = (path, body, response = deployed, query = scope) => step("POST", path, query, response, body);
 const cases = [
   { name: "deploy_to_vercel", write: true, args: { name: "site", target: "preview", teamId: team, files: [{ file: "index.html", data: "<h1>Hello</h1>" }] },
-    steps: [POST("/v13/deployments", { name: "site", files: [{ file: "index.html", data: "<h1>Hello</h1>" }] })], check: (v) => { assert.equal(v.readyState, "BUILDING"); assert.match(v.message, /not verified/); } },
+    steps: [POST("/v13/deployments", { name: "site", files: [{ file: "index.html", data: "PGgxPkhlbGxvPC9oMT4=", encoding: "base64" }] })], check: (v) => { assert.equal(v.readyState, "BUILDING"); assert.match(v.message, /not verified/); } },
   { name: "deploy_from_git", write: true, args: { projectId: "prj/a?", teamId: team, ref: "feature/test", target: "preview" }, steps: [
     GET("/v10/projects/prj%2Fa%3F", { id: "prj_test", name: "site", link: { type: "github", org: "test", repo: "site" } }),
     POST("/v13/deployments", { project: "prj_test", name: "site", gitSource: { type: "github", org: "test", repo: "site", ref: "feature/test" } }),
@@ -58,7 +58,7 @@ const cases = [
   { name: "use_vercel_cli", local: true, args: { action: "Help me deploy", command: "deploy" }, steps: [], check: (v) => { assert.equal(v.executed, false); assert.equal(v.helpCommand, "vercel deploy --help"); } },
   { name: "search_vercel_documentation", args: { topic: "routing" }, steps: [], public: "[Routing](https://vercel.com/docs/routing)\n[Domains](https://vercel.com/docs/domains)", check: (v) => { assert.match(v.text, /Routing/); assert.equal(v.matchingEntries, 1); assert.equal(publicCalls.length, 1); } },
   { name: "web_fetch_vercel_url", external: true, args: { url: "https://site.vercel.app/about", teamId: team }, steps: [GET("/v13/deployments/site.vercel.app", { id: "dpl_x", url: "site.vercel.app" })], public: "Hello", check: (v) => { assert.equal(v.text, "Hello"); assert.equal(publicCalls[0], "https://site.vercel.app/about"); } },
-  { name: "import-claude-design-from-url", external: true, write: true, args: { url: "https://claudeusercontent.com/design", name: "design", target: "preview", teamId: team }, steps: [POST("/v13/deployments", { name: "design", files: [{ file: "index.html", data: "<!doctype html><h1>Hi</h1>", encoding: "utf-8" }] })], public: "<!doctype html><h1>Hi</h1>", check: (v) => assert.equal(v.id, "dpl_new") },
+  { name: "import-claude-design-from-url", external: true, write: true, args: { url: "https://claudeusercontent.com/design", name: "design", target: "preview", teamId: team }, steps: [POST("/v13/deployments", { name: "design", files: [{ file: "index.html", data: "PCFkb2N0eXBlIGh0bWw+PGgxPkhpPC9oMT4=", encoding: "base64" }] })], public: "<!doctype html><h1>Hi</h1>", check: (v) => assert.equal(v.id, "dpl_new") },
 ];
 const realFetch = global.fetch;
 let queue, calls, rejection, unexpected;
@@ -166,8 +166,8 @@ test("legacy list pagination preserves continuation metadata and correct project
   assert.equal(r.isError, false, r.content[0].text); assert.equal(JSON.parse(r.content[0].text).pagination.next, "continuation");
 });
 test("REST team slugs use slug query while CLI-backed thread endpoints retain teamId", async () => {
-  queue = [GET("/v1/registrar/orders/order", { status: "completed" }, { slug: "my-team" })];
-  assert.equal((await call("get_domain_order", { orderId: "order", teamId: "my-team" })).isError, false);
+  queue = [GET("/v1/query/web-analytics/visits/count", { data: { visitors: 1 } }, { projectId: "p", slug: "my-team" })];
+  assert.equal((await call("get_web_analytics", { projectId: "p", teamId: "my-team" })).isError, false);
   queue = [GET("/toolbar/threads", { threads: [] }, { teamId: "my-team", limit: "20", status: "unresolved" })];
   assert.equal((await call("list_toolbar_threads", { teamId: "my-team" })).isError, false);
 });
@@ -192,4 +192,48 @@ test("failed deployment response remains ERROR and never becomes successful comp
   const c = cases[0]; queue = [{ ...c.steps[0], response: { ...deployed, readyState: "ERROR", errorMessage: "Build failed" } }];
   const r = await call(c.name, c.args); const d = JSON.parse(r.content[0].text);
   assert.equal(d.readyState, "ERROR"); assert.equal(d.errorMessage, "Build failed"); assert.match(d.message, /not verified/);
+});
+
+// PR review regression: both upload paths normalize their wire payload to
+// base64, while keeping the caller-facing UTF-8/base64 interface unchanged.
+for (const [label, source, encoded] of [
+  ["default UTF-8", { file: "greeting.txt", data: "Hello" }, "SGVsbG8="],
+  ["explicit UTF-8 Unicode", { file: "greeting.txt", data: "Grá — 世界 🌍", encoding: "utf-8" }, "R3LDoSDigJQg5LiW55WMIPCfjI0="],
+  ["existing binary base64", { file: "asset.bin", data: "AP+AQQ==", encoding: "base64" }, "AP+AQQ=="],
+  ["empty UTF-8", { file: "empty.txt", data: "", encoding: "utf-8" }, ""],
+]) test("inline deployment normalizes " + label + " without changing bytes", async () => {
+  queue = [POST("/v13/deployments", { name: "site", files: [{ file: source.file, data: encoded, encoding: "base64" }] })];
+  const r = await call("deploy_to_vercel", { name: "site", target: "preview", teamId: team, files: [source] });
+  assert.equal(r.isError, false, r.content[0].text); assert.equal(queue.length, 0);
+});
+test("design import normalizes Unicode HTML to base64 before the API write", async () => {
+  publicResponse = "<!doctype html><h1>世界 🌍</h1>";
+  queue = [POST("/v13/deployments", { name: "design", files: [{ file: "index.html", data: "PCFkb2N0eXBlIGh0bWw+PGgxPuS4lueVjCDwn4yNPC9oMT4=", encoding: "base64" }] })];
+  const r = await call("import-claude-design-from-url", { url: "https://claudeusercontent.com/design", name: "design", target: "preview", teamId: team });
+  assert.equal(r.isError, false, r.content[0].text); assert.equal(queue.length, 0);
+});
+
+test("trace redacts credentials before truncation can expose their prefixes", async () => {
+  queue = [{ ...GET("/api/observability/agent-runs", { message: token, access_token: "sensitive-other-token", tokenUsage: 12 }, { teamSlug: team, project: "site", environment: "production", from: "1789344000", to: "1789430400", runId: "run_test", trace: "1" }), origin: "https://vercel.com" }];
+  const r = await call("get_agent_run_trace", { teamId: team, projectId: "site", runId: "run_test", from: "2026-09-14", to: "2026-09-15", maxFieldLength: 5 });
+  assert.equal(r.isError, false); assert.ok(!r.content[0].text.includes("test-")); assert.ok(!r.content[0].text.includes("sensi"));
+  assert.equal(JSON.parse(r.content[0].text).tokenUsage, 12);
+});
+test("file normalization preserves callers and safely handles maximum-size canonical base64", () => {
+  const { checkFiles } = require("../lib/extended-tools");
+  const bytes = Buffer.alloc(1048576, 0x61);
+  const files = [{ file: "asset.bin", data: bytes.toString("base64"), encoding: "base64" }];
+  const original = JSON.stringify(files);
+  const prepared = checkFiles(files);
+  assert.equal(JSON.stringify(files), original); assert.notEqual(prepared[0], files[0]);
+  assert.deepEqual(Buffer.from(prepared[0].data, "base64"), bytes);
+  assert.throws(() => checkFiles([{ file: "a", data: "AB==", encoding: "base64" }]), /canonical/);
+});
+
+for (const [name, args] of [
+  ["get_domain_order", { orderId: "order", teamId: "my-team" }],
+  ["check_domain_availability_and_price", { names: ["example.com"], teamId: "my-team" }],
+]) test(name + " rejects unsupported registrar slug scope before requests", async () => {
+  const r = await call(name, args);
+  assert.equal(r.isError, true); assert.equal(calls.length, 0);
 });

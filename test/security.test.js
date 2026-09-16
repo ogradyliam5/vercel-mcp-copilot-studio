@@ -232,3 +232,13 @@ test("result size limit includes pretty-print formatting", async () => {
   const r = await call("list_toolbar_threads", { teamId: "team_test" });
   assert.equal(r.json.result.isError, true); assert.match(r.body, /524288/);
 });
+
+for (const query of ["api_key=test-secret", "apikey=test-secret", "API-KEY=test-secret", "auth=test-secret", "access_token=test-secret", "%61pi%5fkey=test-secret", "key=test-secret", "code=test-secret", "page=2", "unknown=test-secret"]) {
+  test("public URLs reject query strings before DNS/HTTPS: " + query.split("=")[0], async () => {
+    let dnsCalls = 0, httpCalls = 0;
+    dns.lookup = async () => { dnsCalls++; return [{ address: "8.8.8.8", family: 4 }]; };
+    https.get = () => { httpCalls++; throw new Error("Must never send a query-bearing URL"); };
+    await assert.rejects(publicText("https://site.vercel.app/?" + query, () => true), /query|Query/);
+    assert.equal(dnsCalls, 0); assert.equal(httpCalls, 0);
+  });
+}

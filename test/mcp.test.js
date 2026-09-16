@@ -258,7 +258,7 @@ async function main() {
 
   await new Promise((resolve) => server.close(resolve));
   // Keep the existing CI entry point: run every new suite, propagating failure.
-  const extra = require("node:child_process").spawnSync(process.execPath, ["--test", "test/extended.test.js", "test/security.test.js"], {
+  const extra = require("node:child_process").spawnSync(process.execPath, ["--test", "test/extended.test.js", "test/security.test.js", "test/smoke.test.js"], {
     cwd: require("node:path").resolve(__dirname, ".."), stdio: "inherit",
   });
   assert.strictEqual(extra.status, 0, "Extended/security test suites failed");

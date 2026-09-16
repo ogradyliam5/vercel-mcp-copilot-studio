@@ -63,7 +63,7 @@
       "name": "deploy_to_vercel",
       "implemented": true,
       "basis": "public REST",
-      "notes": "Inline source deployment. Requires name, files and explicit preview/production target. Maximum 100 files and 1048576 decoded bytes total. No local filesystem access. Production requires a separate operator flag. Build state is returned; success is not assumed."
+      "notes": "Inline source deployment. Requires name, files and explicit preview/production target. Maximum 100 files and 1048576 decoded bytes total. No local filesystem access. Production requires a separate operator flag. Build state is returned; success is not assumed. All inline files are normalized to base64 on the API wire after decoded-byte checks."
     },
     {
       "name": "get_web_analytics",
@@ -99,7 +99,7 @@
       "name": "check_domain_availability_and_price",
       "implemented": true,
       "basis": "public REST",
-      "notes": "Read-only availability and exact price responses for 1–5 domains. Optional years 1–10; omitted uses the TLD minimum. Does not quote a binding purchase or reserve a domain."
+      "notes": "Read-only availability and exact price responses for 1–5 domains. Optional years 1–10; omitted uses the TLD minimum. Does not quote a binding purchase or reserve a domain. Registrar team scoping requires an actual team_ ID; slugs are rejected because these contracts do not expose a slug parameter."
     },
     {
       "name": "get_purchase_quote",
@@ -111,7 +111,7 @@
       "name": "buy_pro",
       "implemented": false,
       "basis": "blocked",
-      "notes": "No verified public contract for reproducing the official quote/confirm Pro upgrade flow. Requires billing authorization, genuine consent and recurring-charge validation."
+      "notes": "Vercel CLI uses POST /v1/billing/buy with item.type=subscription and planSlug=pro. This identifies an initiation endpoint, not the official signed quote/confirm, replay and recurring-billing approval guarantees. Those still require a verified design and explicit billing approval before exposure."
     },
     {
       "name": "buy_credits",
@@ -135,7 +135,7 @@
       "name": "get_domain_order",
       "implemented": true,
       "basis": "public REST",
-      "notes": "Read-only order status. purchasing is not completed. No purchase is performed."
+      "notes": "Read-only order status. purchasing is not completed. No purchase is performed. Registrar team scoping requires an actual team_ ID; slugs are rejected because these contracts do not expose a slug parameter."
     },
     {
       "name": "get_access_to_vercel_url",
@@ -147,13 +147,13 @@
       "name": "web_fetch_vercel_url",
       "implemented": true,
       "basis": "public HTTPS + REST as needed",
-      "notes": "PUBLIC content only, not authenticated protected-page parity. Requires external-fetch opt-in, exact operator hostname allowlist, and API verification that the token can access that deployment. No credentials forwarded, no redirects, public IPv4 DNS pinning. Maximum 524288 response bytes."
+      "notes": "PUBLIC content only, not authenticated protected-page parity. Requires external-fetch opt-in, exact operator hostname allowlist, and API verification that the token can access that deployment. No credentials forwarded, no redirects, public IPv4 DNS pinning. Maximum 524288 response bytes. Query strings are rejected before DNS/HTTP."
     },
     {
       "name": "import-claude-design-from-url",
       "implemented": true,
       "basis": "public HTTPS + REST as needed",
-      "notes": "Limited HTML importer. Requires explicit project name and target, writes and external-fetch opt-ins. Exact public claudeusercontent.com HTTPS host, maximum 1048576 bytes; self-contained HTML only, no asset crawling. Optional stable design ID adds a deterministic 16-hex-character suffix. Not the official project-mapping service."
+      "notes": "Limited HTML importer. Requires explicit project name and target, writes and external-fetch opt-ins. Exact public claudeusercontent.com HTTPS host, maximum 1048576 bytes; self-contained HTML only, no asset crawling. Optional stable design ID adds a deterministic 16-hex-character suffix. Not the official project-mapping service. All inline files are normalized to base64 on the API wire after decoded-byte checks. Query strings are rejected before DNS/HTTP."
     },
     {
       "name": "list_toolbar_threads",
@@ -197,5 +197,7 @@
       "basis": "local guidance",
       "notes": "Help guidance only: returns a CLI --help command and documentation link. Never executes a command, reads local files, or deploys anything."
     }
-  ]
+  ],
+  "revalidatedAt": "2026-09-16",
+  "reviewOpenApiSha256": "3fe84ea9ee221354b9c2873936f66e262264e0d7baf5151d2b0fc9b63148d0da"
 }
