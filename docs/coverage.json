@@ -1,0 +1,203 @@
+{
+  "checkedAt": "2026-09-15",
+  "officialReference": "https://vercel.com/docs/agent-resources/vercel-mcp/tools",
+  "cliCommit": "c628be7835e03a965b93e9cf9e2bd5ac2acbf5eb",
+  "openApiSource": "https://openapi.vercel.sh/",
+  "openApiSha256": "34dd27fa7b766c0f63221a24995390644d6363eeb46b5406782083f86a3d26bd",
+  "coverage": [
+    {
+      "name": "search_vercel_documentation",
+      "implemented": true,
+      "basis": "public HTTPS + REST as needed",
+      "notes": "Keyword search of the public documentation sitemap, not the official semantic search. Maximum 20 matching index entries; default 2500 budget units converted to a 10000-character cap. Returns links/index text, not full pages."
+    },
+    {
+      "name": "list_teams",
+      "implemented": true,
+      "basis": "public REST",
+      "notes": "Original array output retained. Default 100, maximum 100 per page. includePagination returns metadata; until accepts continuation timestamp. No automatic whole-account scan."
+    },
+    {
+      "name": "list_projects",
+      "implemented": true,
+      "basis": "public REST",
+      "notes": "Original array output retained. Default 20, maximum 100. includePagination returns metadata; use from for the continuation token. No automatic whole-account scan."
+    },
+    {
+      "name": "get_project",
+      "implemented": true,
+      "basis": "public REST",
+      "notes": "Accepts projectId or legacy projectIdOrName. Keeps trimmed existing result, not the full official response schema."
+    },
+    {
+      "name": "list_deployments",
+      "implemented": true,
+      "basis": "public REST",
+      "notes": "Original array output retained. Default 10, maximum 100. includePagination and until support continuation. The original state/target filters remain; not an exact official input schema."
+    },
+    {
+      "name": "get_deployment",
+      "implemented": true,
+      "basis": "public REST",
+      "notes": "Existing trimmed deployment response, aliases and build errors. Not an exact official response schema."
+    },
+    {
+      "name": "get_deployment_build_logs",
+      "implemented": true,
+      "basis": "public REST",
+      "notes": "Supports idOrUrl or legacy deploymentIdOrUrl, head/tail, errorsOnly, since/until and buildId. Scans at most 1000 events; default 100 returned lines, maximum 1000. includePagination shows possiblyMore and scannedEvents. Filtered errors apply to the scanned window only."
+    },
+    {
+      "name": "get_runtime_logs",
+      "implemented": true,
+      "basis": "Vercel CLI source (opt-in)",
+      "notes": "CLI-backed and opt-in. Resolves project owner before fetching one bounded page. Default 50, maximum 1000 returned rows. since/until default last 24 hours, maximum 90-day interval. No group_by emulation; page, hasMore, nextPage and truncated are explicit. Increase limit on the same page before advancing if truncated."
+    },
+    {
+      "name": "get_runtime_errors",
+      "implemented": false,
+      "basis": "blocked",
+      "notes": "No verified grouped-error-cluster API contract found in the public OpenAPI or the inspected CLI. get_runtime_logs is available, but sampled logs are not equivalent to global error counts. Needs an authenticated supported contract and fixtures."
+    },
+    {
+      "name": "deploy_to_vercel",
+      "implemented": true,
+      "basis": "public REST",
+      "notes": "Inline source deployment. Requires name, files and explicit preview/production target. Maximum 100 files and 1048576 decoded bytes total. No local filesystem access. Production requires a separate operator flag. Build state is returned; success is not assumed. All inline files are normalized to base64 on the API wire after decoded-byte checks."
+    },
+    {
+      "name": "get_web_analytics",
+      "implemented": true,
+      "basis": "public REST",
+      "notes": "Count and aggregate for visits/events. Aggregate requires since/until and 1–2 dimensions; default 10, maximum 100 groups. Preserves upstream totals and Others. Analytics must be enabled; plan reporting windows are enforced upstream."
+    },
+    {
+      "name": "list_agent_run_projects",
+      "implemented": true,
+      "basis": "Vercel CLI source (opt-in)",
+      "notes": "CLI-backed and opt-in. Requires teamId. Default production and last 1d; explicit from/to overrides period; maximum 90-day interval. Returns upstream team view."
+    },
+    {
+      "name": "list_agent_runs",
+      "implemented": true,
+      "basis": "Vercel CLI source (opt-in)",
+      "notes": "CLI-backed and opt-in. Requires teamId/projectId; default page 1, pageSize 20, maximum 100. Time scope as list_agent_run_projects; retains upstream pagination."
+    },
+    {
+      "name": "get_agent_run",
+      "implemented": true,
+      "basis": "Vercel CLI source (opt-in)",
+      "notes": "CLI-backed and opt-in. Requires teamId/projectId/runId. Time scope as list_agent_run_projects."
+    },
+    {
+      "name": "get_agent_run_trace",
+      "implemented": true,
+      "basis": "Vercel CLI source (opt-in)",
+      "notes": "CLI-backed and opt-in. Default per-string cap 8000 characters; range 0–50000. 0 disables per-field truncation, not the total output limit. Trace data can contain private conversations."
+    },
+    {
+      "name": "check_domain_availability_and_price",
+      "implemented": true,
+      "basis": "public REST",
+      "notes": "Read-only availability and exact price responses for 1–5 domains. Optional years 1–10; omitted uses the TLD minimum. Does not quote a binding purchase or reserve a domain. Registrar team scoping requires an actual team_ ID; slugs are rejected because these contracts do not expose a slug parameter."
+    },
+    {
+      "name": "get_purchase_quote",
+      "implemented": false,
+      "basis": "blocked",
+      "notes": "The official MCP issues signed, parameter-bound quotes with a 5-minute expiry and replay protection. Its issuer contract is not provided in the inspected public API. Do not invent compatible signing keys or return fake idempotency tokens."
+    },
+    {
+      "name": "buy_pro",
+      "implemented": false,
+      "basis": "blocked",
+      "notes": "Vercel CLI uses POST /v1/billing/buy with item.type=subscription and planSlug=pro. This identifies an initiation endpoint, not the official signed quote/confirm, replay and recurring-billing approval guarantees. Those still require a verified design and explicit billing approval before exposure."
+    },
+    {
+      "name": "buy_credits",
+      "implemented": false,
+      "basis": "blocked",
+      "notes": "A public credit-purchase API exists, but matching the official signed quote/confirm and no-double-charge guarantees requires additional verified semantics and durable replay/approval handling. Not exposed by this stateless bridge."
+    },
+    {
+      "name": "buy_addon",
+      "implemented": false,
+      "basis": "blocked",
+      "notes": "No verified public contract for the official add-on quote/confirm flow. Requires pricing/plan/quantity validation and billing consent."
+    },
+    {
+      "name": "buy_domain",
+      "implemented": false,
+      "basis": "blocked",
+      "notes": "A public domain-buy API exists, but its contract is not the official signed MCP quote flow. Requires verified durable replay/approval handling, term/price matching and safe WHOIS contact handling before implementation."
+    },
+    {
+      "name": "get_domain_order",
+      "implemented": true,
+      "basis": "public REST",
+      "notes": "Read-only order status. purchasing is not completed. No purchase is performed. Registrar team scoping requires an actual team_ ID; slugs are rejected because these contracts do not expose a slug parameter."
+    },
+    {
+      "name": "get_access_to_vercel_url",
+      "implemented": false,
+      "basis": "blocked",
+      "notes": "A public protection-bypass endpoint exists, but a verified share-link response/credential-delivery contract and recipient/expiry/revocation controls have not been established here. Not exposed; existing deployment protection is never weakened."
+    },
+    {
+      "name": "web_fetch_vercel_url",
+      "implemented": true,
+      "basis": "public HTTPS + REST as needed",
+      "notes": "PUBLIC content only, not authenticated protected-page parity. Requires external-fetch opt-in, exact operator hostname allowlist, and API verification that the token can access that deployment. No credentials forwarded, no redirects, public IPv4 DNS pinning. Maximum 524288 response bytes. Query strings are rejected before DNS/HTTP."
+    },
+    {
+      "name": "import-claude-design-from-url",
+      "implemented": true,
+      "basis": "public HTTPS + REST as needed",
+      "notes": "Limited HTML importer. Requires explicit project name and target, writes and external-fetch opt-ins. Exact public claudeusercontent.com HTTPS host, maximum 1048576 bytes; self-contained HTML only, no asset crawling. Optional stable design ID adds a deterministic 16-hex-character suffix. Not the official project-mapping service. All inline files are normalized to base64 on the API wire after decoded-byte checks. Query strings are rejected before DNS/HTTP."
+    },
+    {
+      "name": "list_toolbar_threads",
+      "implemented": true,
+      "basis": "Vercel CLI source (opt-in)",
+      "notes": "CLI-backed and opt-in. Default unresolved, limit 20, maximum 100; cursor instead of official offset. Retains upstream pagination."
+    },
+    {
+      "name": "get_toolbar_thread",
+      "implemented": true,
+      "basis": "Vercel CLI source (opt-in)",
+      "notes": "CLI-backed and opt-in. Reads thread plus one message page, default/maximum 100. messageCursor follows pagination rather than claiming all messages were retrieved."
+    },
+    {
+      "name": "change_toolbar_thread_resolve_status",
+      "implemented": true,
+      "basis": "Vercel CLI source (opt-in)",
+      "notes": "CLI-backed and opt-in; requires writes enabled. Uses PATCH with explicit resolved boolean."
+    },
+    {
+      "name": "reply_to_toolbar_thread",
+      "implemented": true,
+      "basis": "Vercel CLI source (opt-in)",
+      "notes": "CLI-backed and opt-in; requires writes enabled. Maximum 10000 Markdown characters; no retry on uncertain outcomes."
+    },
+    {
+      "name": "edit_toolbar_message",
+      "implemented": true,
+      "basis": "Vercel CLI source (opt-in)",
+      "notes": "CLI-backed and opt-in; requires writes enabled. Maximum 10000 Markdown characters; ownership enforced by Vercel."
+    },
+    {
+      "name": "add_toolbar_reaction",
+      "implemented": false,
+      "basis": "blocked",
+      "notes": "The inspected CLI defines reaction response data but no reaction mutation contract. Needs a verified supported endpoint and request/response fixtures; no guessed mutation is exposed."
+    },
+    {
+      "name": "use_vercel_cli",
+      "implemented": true,
+      "basis": "local guidance",
+      "notes": "Help guidance only: returns a CLI --help command and documentation link. Never executes a command, reads local files, or deploys anything."
+    }
+  ],
+  "revalidatedAt": "2026-09-16",
+  "reviewOpenApiSha256": "3fe84ea9ee221354b9c2873936f66e262264e0d7baf5151d2b0fc9b63148d0da"
+}

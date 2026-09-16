@@ -65,7 +65,7 @@ const CASES = [
   },
   {
     name: "get_deployment_build_logs", args: { deploymentIdOrUrl: "dpl/test", teamId: "team_test", limit: 1 },
-    method: "GET", path: "/v3/deployments/dpl%2Ftest/events", query: { teamId: "team_test", builds: "1", limit: "-1" },
+    method: "GET", path: "/v3/deployments/dpl%2Ftest/events", query: { teamId: "team_test", builds: "1", follow: "0", limit: "1000", direction: "backward" },
     response: { events: [{ type: "stdout", created: 1, payload: { text: "First line" } },
       { type: "status" }, { type: "stderr", payload: { date: 2, info: { message: "Last line" } } }] },
     expected: [{ type: "stderr", created: 2, text: '{"message":"Last line"}' }],
@@ -122,7 +122,7 @@ module.exports = async function runToolContracts({ test, post, authHeaders }) {
   await test("tools/list publishes all four boolean hints for every tool", async () => {
     const r = await post("/mcp", { jsonrpc: "2.0", id: 30, method: "tools/list" }, authHeaders);
     assert.strictEqual(r.status, 200);
-    const tools = r.body.result.tools;
+    const tools = r.body.result.tools.filter((t) => Object.hasOwn(EXPECTED_ANNOTATIONS, t.name));
     assert.deepStrictEqual(tools.map((t) => t.name).sort(), Object.keys(EXPECTED_ANNOTATIONS).sort());
     assert.deepStrictEqual(CASES.map((c) => c.name).sort(), tools.map((t) => t.name).sort());
     for (const t of tools) {

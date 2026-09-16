@@ -1,6 +1,8 @@
 # Vercel MCP Server for Microsoft Copilot Studio
 
-Let your Copilot Studio agent inspect Vercel projects and deployments, read build logs, and perform the management actions listed below. This is an independent, **zero-dependency** Node.js server, not Vercel's official MCP server.
+Let your Copilot Studio agent inspect Vercel, deploy source files or GitHub code, query analytics, and use the optional tools listed below. Writes require explicit operator enablement. This is an independent, **zero-dependency** Node.js server, not Vercel's official MCP server.
+
+**Version 2 safety change:** writes are disabled by default and the server-owned token fallback is removed. Read the [migration and rollout guide](docs/production.md) before upgrading. **33 implemented tools is not full official parity**: [24 official names have implementations with limits; 8 remain blocked](docs/coverage.md).
 
 **In short:** deploy this repository to Vercel, create a Vercel access token, and add your deployed `/mcp` URL to Copilot Studio using **API key → Header → `x-api-key`**. Paste the **raw token** into the connection's API key field.
 
@@ -73,61 +75,69 @@ The API-key instructions below apply to **this repository**, not `mcp.vercel.com
 
 ## What it can and cannot do
 
-**Permissions and capabilities are different:** the token determines *which resources* the agent may access; this server's tools determine *which actions* it can perform.
+**Permissions and capabilities are different:** the token determines which resources the agent may access; the implemented tools and operator policy determine which actions it can perform. Broad token permissions do not add missing tools.
 
-The server currently exposes **13 tools**:
+The registry contains **33 implemented tools**. **14 read-only tools** are visible by default. The complete per-tool limits, differences, source contracts and the **8 unimplemented official tools** are in [the coverage table](docs/coverage.md). Do not infer capability from a similar tool name alone.
 
-| Tool | Action | Access |
-|---|---|---|
-| `get_current_user` | View the token owner's profile; not a connection test for project-scoped tokens. | Read |
-| `list_teams` | List team IDs and names; requests up to **100 teams**. | Read |
-| `list_projects` | List projects, optionally by team or name; default **20 projects**. | Read |
-| `get_project` | View a project's details and Git repository link. | Read |
-| `list_deployments` | List deployments, optionally by project, state or target; default **10 deployments**. | Read |
-| `get_deployment` | View a deployment's details and error information. | Read |
-| `get_deployment_build_logs` | Read build logs; default last **100 matching log lines**. | Read |
-| `list_project_domains` | List attached domains and verification status; does not add domains or edit DNS. | Read |
-| `list_env_vars` | List environment variables; `encrypted` and `sensitive` values are hidden, other values may be returned. | Read |
-| `cancel_deployment` | Cancel a building or queued deployment. | Write |
-| `promote_deployment` | Promote an existing READY deployment to production. | Write |
-| `create_env_var` | Create or update a variable; defaults to `encrypted` and **all 3 targets: production, preview, development**. | Write |
-| `delete_env_var` | Delete a variable using its ID. | Write |
+| Tool | Action | Access | Additional gate |
+|---|---|---|---|
+| `get_current_user` | Get the authenticated Vercel user's profile (username, email, account id). Not a health check for project-scoped tokens. | Read |  |
+| `list_teams` | List Vercel teams the authenticated user belongs to. Returns team ids and names. | Read |  |
+| `list_projects` | List Vercel projects. Returns project id, name, framework, and latest production URL. Optionally filter by team or search by name. | Read |  |
+| `get_project` | Get details of a single Vercel project by its name or id, including framework, git repository link, and production alias. | Read |  |
+| `list_deployments` | List recent deployments, optionally filtered by project, state (BUILDING, ERROR, READY, CANCELED, QUEUED) or target (production/preview). Returns deployment id, URL, state and git commit info. | Read |  |
+| `get_deployment` | Get details of a single deployment by its id (uid) or URL, including state, target, aliases and error info if the build failed. | Read |  |
+| `get_deployment_build_logs` | Get the build log output (events) for a deployment. Ideal for diagnosing failed builds. Returns the last N log lines. | Read |  |
+| `cancel_deployment` | Cancel a deployment that is currently building or queued. | Write | Writes opt-in |
+| `promote_deployment` | Promote an existing (READY) deployment to production for its project. Use this to roll forward or roll back production to a known-good deployment. | Write | Writes opt-in |
+| `list_project_domains` | List the custom domains attached to a Vercel project, including verification status. | Read |  |
+| `list_env_vars` | List environment variables for a project (keys, targets and types; secret values are hidden). | Read |  |
+| `create_env_var` | Create (or upsert) an environment variable on a project for the given targets (production, preview, development). | Write | Writes opt-in |
+| `delete_env_var` | Delete an environment variable from a project by its env var id (get ids from list_env_vars). | Write | Writes opt-in |
+| `deploy_to_vercel` | Deploy inline source files to Vercel. Starts a build and can create a project. Requires operator-enabled writes. Returns pending state, not verified success. | Write | Writes opt-in |
+| `deploy_from_git` | Build a GitHub branch/commit for an existing GitHub-linked Vercel project. Vercel must already have repository access. No source files or Git token in chat. | Write | Writes opt-in |
+| `redeploy_deployment` | Rebuild an existing deployment in its original project. Explicit target prevents inheriting production accidentally. Inspect returned deployment status before retrying. | Write | Writes opt-in |
+| `get_web_analytics` | Query Vercel Web Analytics counts or aggregates. Requires enabled analytics and a plan supporting the requested reporting window. Returns upstream totals without approximation. | Read |  |
+| `check_domain_availability_and_price` | Check domain availability and quoted registration/renewal prices. Does not purchase or reserve anything. Up to 5 domains per call. | Read |  |
+| `get_domain_order` | Read domain registration order status. A purchasing order is not yet completed. Does not buy anything. | Read |  |
+| `list_agent_run_projects` | List team projects with eve Agent Runs. CLI-backed API, requires operator opt-in. Default window 1d. | Read | CLI API opt-in |
+| `list_agent_runs` | List eve Agent Runs with upstream pagination. CLI-backed API, requires operator opt-in. | Read | CLI API opt-in |
+| `get_agent_run` | Read one eve Agent Run. CLI-backed API, requires operator opt-in. | Read | CLI API opt-in |
+| `get_agent_run_trace` | Read eve run traces. Sensitive conversation data may be returned. Strings capped at 8000 characters by default; 0 disables per-field truncation, not total response limits. | Read | CLI API opt-in |
+| `get_runtime_logs` | Read a bounded page of runtime request logs using Vercel's CLI-backed API. Returns continuation and truncation metadata, not an exhaustive inventory. Operator opt-in required. | Read | CLI API opt-in |
+| `list_toolbar_threads` | List Toolbar comment threads; unresolved by default. CLI-backed API uses cursor pagination, not offset. | Read | CLI API opt-in |
+| `get_toolbar_thread` | Read a Toolbar thread and one page of messages. Follow nextCursor with messageCursor; does not silently drop pagination. | Read | CLI API opt-in |
+| `change_toolbar_thread_resolve_status` | Resolve or reopen a Toolbar thread. Requires writes and CLI-backed API opt-in. | Write | CLI API opt-in; Writes opt-in |
+| `reply_to_toolbar_thread` | Post a reply to a Toolbar thread. No automatic retries: a repeated request can duplicate a message. | Write | CLI API opt-in; Writes opt-in |
+| `edit_toolbar_message` | Edit a Toolbar message. Vercel enforces ownership. Requires writes and CLI-backed API opt-in. | Write | CLI API opt-in; Writes opt-in |
+| `use_vercel_cli` | Return Vercel CLI help guidance only. This server never runs shell commands or accesses the user's local filesystem. | Read |  |
+| `search_vercel_documentation` | Keyword-search Vercel's public documentation index. Returns matching index entries and links, not Vercel's proprietary semantic search or full document contents. | Read |  |
+| `web_fetch_vercel_url` | Fetch a public, owned Vercel deployment's text. Operator must allow the exact hostname and external fetching. Does not create access links or bypass Deployment Protection. | Read | External-fetch opt-in |
+| `import-claude-design-from-url` | Import a self-contained public Claude Design HTML bundle as index.html. Explicit name/target and external-fetch/write opt-ins required. Never executes content on this server. | Write | External-fetch opt-in; Writes opt-in |
 
-List tools do not automatically fetch every page. Project, deployment and log tools accept a `limit`; a response is not necessarily a complete account inventory. See [`lib/tools.js`](lib/tools.js) for the implemented arguments and handlers.
+### Deploying applications
 
-**This is not complete Vercel administration.** It does not implement creating/deleting projects, creating deployments, editing DNS, managing team membership, or billing administration. A Full Account token does not add those missing tools; additional actions require implementation.
+You can now deploy **inline source files**, deploy a branch/commit of an **existing GitHub-linked project**, and **redeploy an existing deployment**. These use [Vercel's deployment API](https://vercel.com/docs/rest-api/deployments/create-a-new-deployment), not a local shell or the official MCP endpoint. Vercel must have access to the Git repository; a token does not supply local source files.
 
-### Can the agent create deployments or redeploy?
+All 3 deployment tools require an explicit **preview or production target**. Enable writes for a reviewed test project first; production requires a separate operator flag. UTF-8 and base64 inputs are normalized to base64 on the API wire. File deployment supports **100 files / 1048576 decoded bytes**; use Git for larger projects. A production/custom-target original cannot be safely redeployed as preview by this implementation: use deploy_from_git to create a fresh preview instead.
 
-**Not with the current 13 tools, but Vercel's REST API supports it.** This is an implementation gap in this bridge, not a limitation of MCP or API-key authentication. The existing `promote_deployment` tool requests production promotion of an already-built deployment; it does not build the latest Git commit or create a new deployment.
+**A requested build is not a successful deployment.** Check the returned ID with get_deployment until READY or ERROR, inspect build logs, and verify the actual page. No automatic retries are made: a timeout can leave the write outcome unknown.
 
-Vercel's [create-deployment API (`POST /v13/deployments`)](https://vercel.com/docs/rest-api/deployments/create-a-new-deployment) supports these distinct operations:
+The original promote_deployment still promotes an existing build rather than building new code. Environment-variable writes still default to encrypted values and **all 3 targets: production, preview, development**; specify targets explicitly. These defaults now require production opt-in when applicable.
 
-| Operation | What the API needs | Available in this bridge? |
-|---|---|---|
-| Deploy from Git | A `gitSource` identifying the source revision, with the intended project and account/team context. | **No** — requires a new tool. |
-| Redeploy an existing deployment | Its `deploymentId`; settings are inherited unless overridden, and the result has a new deployment ID, URL, and build. | **No** — requires a new tool. |
-| Deploy uploaded source files | File content, or references to files uploaded through Vercel's file-upload API; `files` cannot be combined with `gitSource`. | **No** — requires a source-upload/deployment implementation. |
+### Pagination and bounded results
 
-A sensible first extension is deploy/redeploy for an **existing Git-connected project**, with preview as the default and separately approved production changes. This is a proposed extension, **not implemented behavior**. It would need explicit project/team/source selection, input validation, write annotations, tests, and deployment-status checking before reporting success. A Vercel token alone does not supply source files or grant access to a private Git repository. Builds run on Vercel and can consume account usage.
+List tools return a page, not a complete account inventory. list_teams defaults to **100**, list_projects to **20**, and list_deployments to **10** (maximum **100** each). Set includePagination to true to receive metadata; use from for project continuation and until for teams/deployments. No automatic cross-team traversal is performed.
 
-Until those tools are implemented, create deployments through your existing Vercel Git integration, dashboard, CLI, or REST API, then use this server to inspect their status and logs. **Deploying this MCP bridge during setup does not give the agent a tool for deploying your other applications.**
+Build logs scan at most **1000 upstream events** and return **100 lines by default**, maximum **1000**. Use includePagination for scan metadata and narrower since/until windows. Runtime logs, Agent Runs and comments expose their own pagination and explicit truncation metadata; see [coverage](docs/coverage.md). Oversized aggregate results fail rather than silently dropping totals.
 
-### Tool annotations
+### Policy and annotations
 
-Every tool returned by `tools/list` declares all **4 MCP hints** as explicit booleans. Hosts can use these descriptions to inform warnings and approval policies; **they are not permission checks or an enforced confirmation step**. See the [MCP annotation specification](https://modelcontextprotocol.io/specification/2025-06-18/schema#toolannotations).
+Every tool declares all **4 MCP hints**. Read tools are read-only/non-destructive/idempotent. Original cancellation and environment deletion remain idempotent by effect; other writes are conservatively non-idempotent. All tools are open-world except use_vercel_cli, which only returns local guidance. **Annotations are advisory, not permissions or evidence of human approval.**
 
-| Tools | `readOnlyHint` | `destructiveHint` | `idempotentHint` | `openWorldHint` |
-|---|---|---|---|---|
-| The **9 read tools** listed above | `true` | `false` | `true` | `true` |
-| `cancel_deployment` | `false` | `true` | `true` | `true` |
-| `promote_deployment` | `false` | `true` | `false` | `true` |
-| `create_env_var` | `false` | `true` | `false` | `true` |
-| `delete_env_var` | `false` | `true` | `true` | `true` |
+Server-side policy is enforced on discovery **and execution**. The [operator flags and production checklist](docs/production.md) describe write/production gates, tool allowlists, opt-in CLI-backed APIs and safe public fetching. Enabling a flag is not approval of a particular tool call: configure host-level human approval and restrict who can use the connection.
 
-All tools contact the external Vercel API, including the read-only tools. The **4 write tools** can cancel work, replace production, overwrite a value, or remove data, so they are marked potentially destructive rather than merely additive.
-
-Idempotency describes repeated *effects*, not identical responses: canceling the same deployment again is rejected ([HTTP 400 for an already canceled deployment](https://vercel.com/docs/rest-api/deployments/cancel-a-deployment)), and deleting the same variable ID again cannot delete another variable. Promotion and environment-variable upsert are conservatively **not advertised as idempotent**; this wrapper provides no guarantee of side-effect-free retries for them. Keep explicit approval for writes even when an idempotency hint is true.
+Purchases and protected-link creation are not implemented and cannot be enabled with flags. No raw arbitrary-API or shell-execution tool is exposed. This remains a focused bridge, not unrestricted account administration.
 
 ## Set up in Copilot Studio
 
@@ -184,7 +194,7 @@ Choose the narrowest scope that meets your needs. **Full Account is broad access
 
    **Copyable server description:**
 
-   > Inspect Vercel projects, deployments, build logs, domains, account details, and teams. Manage environment variables, cancel deployments, and promote existing deployments to production.
+   > Inspect Vercel projects, deployments, logs, domains and analytics. When explicitly enabled, deploy source files or GitHub code, redeploy, manage environment variables and use optional Agent Runs and comment tools. Follow server policy and verify build status before reporting success.
 
 3. Select **Create**, then **Create a new connection** in the Add tool dialog.
 4. When prompted for the **API key**, paste **only your Vercel access token**. Do not add `Bearer`, quotation marks, or `x-api-key:`. Do not paste it into the description, URL, agent instructions, or chat.
@@ -206,7 +216,7 @@ Check the actual tool result for success (`isError: false`), not just the agent'
 - **Team or Project token:** Vercel infers the team/project from the scope, so `teamId` can be omitted.
 - **Project token:** do not use `get_current_user` or `list_teams` as the health check. Vercel denies those user/team requests even when access to the project works.
 
-See [Vercel's scope guidance](https://vercel.com/docs/accounts/access-tokens). Once a read-only test succeeds, try “Show the build logs for the latest failed deployment of my-site.” Before enabling writes, put human approval controls in your agent/workflow; **this server does not enforce confirmation**. In particular, specify environment-variable targets explicitly to avoid unintentionally changing all three targets.
+See [Vercel's scope guidance](https://vercel.com/docs/accounts/access-tokens). Once a read-only test succeeds, try “Show the build logs for the latest failed deployment of my-site.” Before enabling writes, put human approval controls in your agent/workflow; **operator flags are not per-request human approval**. In particular, specify environment-variable targets explicitly to avoid unintentionally changing all three targets.
 
 ## Troubleshooting
 
@@ -223,7 +233,9 @@ Start with the **tool name and raw error**, not an AI-generated guess. Do not pa
 | Browser shows HTTP 405 at `/mcp` | Expected for GET; use Copilot Studio to send an MCP POST request. |
 | HTML login page, platform 404, or no MCP response | Check the deployment's readiness, exact `/mcp` URL, protection settings, and whether the connection is allowed by Power Platform data policies. |
 
-**For maintainers:** token selection in [`lib/mcp.js`](lib/mcp.js) checks a Bearer `Authorization` header first, then `x-api-key`, then `x-vercel-token`, and finally `VERCEL_TOKEN`. An unrelated Bearer header can override the intended API key. Also, `Bearer` inside the `x-api-key` value is not stripped: the outbound request would contain `Bearer Bearer ...`. Send only the raw token in `x-api-key`.
+**For maintainers:** this version accepts a Bearer Authorization header or a raw token in x-api-key / x-vercel-token. Matching credentials in multiple headers are allowed; conflicting or malformed values fail with HTTP 401. There is **no VERCEL_TOKEN fallback**. Changing the token never requires rebuilding the server.
+
+A tool missing from discovery may be disabled by policy, not missing from the code. A direct call to a disabled tool also fails. Refresh the connector tool list after upgrading or changing operator flags.
 
 If configuration checks do not resolve it, compare the **same read-only operation with the same token** directly against Vercel's API using a trusted local client. Direct failure points to the credential, scope, requested resource or Vercel; direct success with MCP failure narrows the investigation to the connection, header selection or deployed code. Never print authorization headers. Confirm the deployed revision rather than assuming it matches GitHub.
 
@@ -232,7 +244,7 @@ If configuration checks do not resolve it, compare the **same read-only operatio
 - Use HTTPS and a server deployment you own or trust. This bridge receives the Vercel token and can exercise its permissions.
 - Restrict who can use the agent and its connection. A shared connection uses the token owner's access; it does not automatically give each chat user their own Vercel identity.
 - Keep tokens out of Git, chat, screenshots, URLs and logs. If a full token is exposed, revoke it, create a replacement, and update the connection. Choose an expiration and plan for replacement.
-- Require human approval for writes, especially production promotion and environment-variable changes. A description asking for confirmation is not an authorization control, and the server has no built-in approval gate.
+- Require host-level human approval for writes, especially production promotion and environment-variable changes. Server flags/allowlists enforce operator policy but do not establish per-request human consent. Do not replace approval with an AI-populated boolean.
 - `list_env_vars` masks `encrypted` and `sensitive` values, not every value or every tool response. Logs and plain variables can contain private data. Use Vercel's dashboard or your approved secret-management process for secret values rather than entering them in agent chat.
 
 ## For developers and self-hosters
@@ -263,9 +275,9 @@ No `npm install` is needed: there are no npm dependencies, database, or session 
 
 ### Advanced authentication
 
-Other clients can supply `Authorization: Bearer <token>` or a raw token in `x-vercel-token`. Token headers are read in the precedence order described in Troubleshooting. **Tokens in URL query parameters are not supported by this implementation.**
+Other clients can supply `Authorization: Bearer <token>` or a raw token in `x-vercel-token`. Conflicting token headers are rejected as described in Troubleshooting. **Tokens in URL query parameters are not supported by this implementation.**
 
-The optional `VERCEL_TOKEN` fallback is for deliberately secured, single-tenant hosting only. If it is set, requests without a caller token can use that server-side credential. The bridge does not authenticate those callers itself. **Never expose this fallback on an unprotected public endpoint; a hard-to-guess URL is not protection.** Leave it unset for the recommended per-connection setup.
+The old `VERCEL_TOKEN` fallback is **not supported in version 2**. Keep it unset. Supply a per-connection credential instead; see [migration](docs/production.md).
 
 ### Implementation and tests
 
@@ -274,16 +286,18 @@ The transport is **Streamable HTTP**, with JSON responses and no sessions or ser
 - [`api/mcp.js`](api/mcp.js): Vercel function entry point; [`vercel.json`](vercel.json) maps `/mcp` to `/api/mcp`.
 - [`server.js`](server.js): standalone HTTP host.
 - [`lib/mcp.js`](lib/mcp.js): stateless JSON-RPC 2.0 handling and token extraction; protocol versions **2024-11-05**, **2025-03-26**, **2025-06-18**.
-- [`lib/tools.js`](lib/tools.js): the 13 tool definitions and handlers.
+- [`lib/tools.js`](lib/tools.js): original tools plus registration of [`lib/extended-tools.js`](lib/extended-tools.js) and [`lib/web-tools.js`](lib/web-tools.js).
+- [`lib/policy.js`](lib/policy.js), [`lib/validation.js`](lib/validation.js): execution policy, input checks and response masking.
+- [`lib/http.js`](lib/http.js), [`lib/public-fetch.js`](lib/public-fetch.js): bounded request handling and credential-free, DNS-pinned public fetching.
 - [`lib/vercel-api.js`](lib/vercel-api.js): REST requests with Bearer authentication and upstream error handling.
 
 Run the repository's test command:
 
 ```bash
-node test/mcp.test.js
+npm test
 ```
 
-The tests start a local HTTP server around the MCP handler and **mock `api.vercel.com`**. The same command runs protocol tests and [`test/tool-contracts.js`](test/tool-contracts.js): all **13 tools** have success and upstream-error cases that check HTTP methods, encoded paths, team/query parameters, Bearer authentication, request bodies and returned content. Discovery tests verify all **4 hints** for every tool, with additional checks for secret-value masking, explicit environment targets and default list limits. This is tool-level behavior coverage, not a claim of 100% line or branch coverage. Tests do not validate a real token, the deployed function, or a live Copilot Studio connection.
+The test command runs the original 46 protocol/contract tests, then the extended-tool and security suites. All **33 implemented tools** are covered by behavioral fixtures; an inventory check detects untested additions. Tests cover request methods/paths/query/body, all 4 annotations, upstream failures, disabled writes, production gates, malformed input, redaction, size/deadline limits, pagination, DNS pinning, and both HTTP adapters. APIs are mocked: this is not a claim of 100% branch coverage or live authentication/deployment verification. See [production rollout](docs/production.md) for the required real-connection checks and the credential-safe, read-only `npm run smoke` command. Public content URLs must be query-free; known credential fields in traces are masked before truncation.
 
 ## License
 
